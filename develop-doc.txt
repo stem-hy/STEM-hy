@@ -1,0 +1,92 @@
+STEM-hy (hereafter, stem) is written in Clojure. www.clojure.org
+provides great documentation, along with the language's raison d'etre
+and high-level explanations of Rich Hickey's design philosophy.
+Browsing the first few links under the Reference section would be
+profitable. Incidentally, if you think this program should have been
+written in PHP, close this file and repent.
+
+stem is distributed as an executable jar file.  The entry point is the
+main function in stem.core, which is the first part of stem this
+document will address. But first, some comments about stem's overall
+structure.
+
+stem isn't a very big program.  It's functionality is contained in 12
+namespaces (files).  Hopefully, the file-names are descriptive enough,
+but a little more explanation can't hurt:
+
+* constants.clj: constants, usually strings, used in stem
+* core.clj: entry point for stem
+* gene_tree.clj: parses gene-trees in Newick format and creates tree data structure
+* hybrid.clj: code that builds and finds gamma values for hybrid trees
+* job.clj: heart of stem; defines and implements notion of a stem job
+* lik.clj: given a species tree and genetrees, finds likelihood
+* lik_tree.clj: given a set of genetrees, returns D_AB matrix, and other useful structures.
+* messages.clj: provides functions to output stem job results to *out*
+* newick.clj: functions to turn a newick string into the tree structure
+* print_tree.clj: prints out binary trees (great for debugging)
+* search.clj: search for top-n trees by likelihood
+* util.clj: utility functions used throughout stem
+
+Back to stem.core.  It's simple - all it contains is a main function
+that prints out welcome messages and calls into stem.job.  After the
+job is completed an exit message is printed, and - wait for it - the system
+exits.
+
+But, what is a "job"? Well, it's the fundamental abstraction used throughout stem.
+Essentially, when a user runs stem, they're running a job - either a
+likelihood job, a search job, a hybridization job, or a user job
+(finding optimized trees given user trees).  Each job does a couple of
+things (hopefully clear from the JobProtocol at the top of job.clj):
+
+1) check to make sure everything is in order before the job is "run",
+   e.g., the user has input the necessary parameters in the settings
+   file, the necessary files can be found, etc.
+
+2) print out the job's input parameters (sanity check for users)
+
+3) run the job
+
+4) print out job results to *out*
+
+5) print out job results to a file
+
+Each job can do all or some of the things above, although if you
+want to prints the results from running a job, then job must be run beforehand. That's what
+stem.job is about. It's the implementation of each type of job.
+
+The stem.newick namespace encapsulates all the functionality that
+parses a Newick-formatted string and returns the tree data structure
+used throughout stem.  This data structure is simple, and important.
+It is just a vector of vectors, where the first element of each vector
+is a Node record and the second and third elements are vectors
+representing the left and right children nodes.  An example:
+
+[{:name :b-len :c-time :desc} [... left ...] [... right ...]]
+              ^
+              |
+              |
+         (Node record)
+
+This is a recursive data structure, and all of the functions in stem
+that traverse or change it, are recursive.
+
+Another important note about stem.newick is how the original Newick
+string is parsed.  Originally, third party software was going to be
+used to "parse" Newick strings, but Newick strings are already so
+close to clojure lists, that with a couple of search and replace calls
+to the string (e.g., change ',' to ')(') that clojure's builtin
+read-string function can be used to parse the Newick string, and the
+resulting list of lists is recursively walked to produce the data
+structure outlined above.  Isn't clojure wonderful?
+
+Next up is stem.genetrees.  The importannt function in gene_tree.clj
+is parse-gene-tree-file, which accepts a file-name that contains
+gene-trees in Newick format (doesn't need to be gene trees though -
+any Newick string will do) and returns a sequence of
+GeneTree records, each record containing a vector tree structure and a
+rate.
+
+
+
+
+
