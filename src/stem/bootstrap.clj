@@ -37,16 +37,17 @@
   [dna-seqs]
   (into [] (map :dna-seq dna-seqs)))
 
-(defn seq->dna-seqs [s]
+(defn phylip-file-parts->dna-seqs
+  [s]
   (map
-   (fn [[n s]] (DNASeq. n (str->chars s)))
+   (fn [[name dna-str]] (DNASeq. name (str->chars dna-str)))
    (partition 2 s)))
 
 (defn file->phylip
   [f]
   (let [file-parts (->> f slurp (.split #"\s+"))
         [nseqs nsites & data] file-parts
-        dna-seqs (seq->dna-seqs data)]
+        dna-seqs (phylip-file-parts->dna-seqs data)]
     (PhylipFile. (Integer/parseInt nseqs) (Integer/parseInt nsites) dna-seqs)))
 
 (defn write-ssa-infile
@@ -101,20 +102,23 @@ seedk: 56789")
   (u/delete-files "settings-ssa" "infile" "besttree" "treefile" "paupfile.nex" "results"))
 
 (defn phylip->genetree
-  [p model theta]
-  (let [sample (->> (dna-seqs->dna-matrix (:dna-seqs p))
-                    (sample-dna-matrix))
-        specs (map :name (:dna-seqs p))]
-    (try
-      (do
-        (write-ssa-infile (:nseqs p) (:nsites p) specs sample)
-        (write-ssa-settings-file model)
-        (run-ssa u/ssa-for-os)
-        (parse-ssa-treefile "treefile" theta))
-      (catch Exception e
-        (clean-up)
-        (u/abort "An error occured generating the bootstrap samples...\n" e))
-      (finally (clean-up)))))
+  ([p model theta]
+     (let [sample (->> (dna-seqs->dna-matrix (:dna-seqs p))
+                       (sample-dna-matrix))]
+       (phylip->genetree p model theta sample)))
+  ([p model theta sample]
+     (let [specs (map :name (:dna-seqs p))]
+       (try
+         (do
+           (write-ssa-infile (:nseqs p) (:nsites p) specs sample)
+           (write-ssa-settings-file model)
+           (run-ssa u/ssa-for-os)
+           (parse-ssa-treefile "treefile" theta))
+         (catch Exception e
+           (clean-up)
+           (u/abort "An error occured generating the bootstrap samples...\n" e))
+         (finally
+          (clean-up))))))
 
 (defn phylip-file->genetree
   [f model theta]
