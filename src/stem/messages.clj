@@ -120,13 +120,16 @@
     (println tree)
     (println (str "log likelihood: " lik "\n"))))
 
-(defn lin-set-message [s]
-  (println "There are" (count s) "lineages:")
-  (println (apply str (interpose ", " s)))
-  (println) (flush))
+(defn print-bootstrap-job
+  [job]
+  (print-lik-job job)
+  (println "\nBootstrapping trees (this might take a while)...\n"))
 
-(defn spec-set-message [s]
-  (println "There are" (count s) "species:")
-  (println (apply str (interpose ", " s)))
-  (println) (flush))
-
+(defn print-bootstrap-results
+  [{:keys [boot-spec-trees original-spec-tree]}]
+  (println "\n\n****************Results*****************\n")
+  (println "\nThe maximum likelihood species tree estimate is:\n")
+  (println original-spec-tree "\n")
+  (println "\nThe" (count boot-spec-trees) "bootstrapped species trees:\n")
+  (doseq [s boot-spec-trees]
+    (println s "\n")))

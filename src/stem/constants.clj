@@ -21,3 +21,5 @@
 (def *hybrid-results-filename-default* "hybrid-results.txt")
 (def *user-filename-default* "user_tree")
 
+(def default-seed 19580427)
+
