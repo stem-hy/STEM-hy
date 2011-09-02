@@ -8,7 +8,8 @@
             [stem.lik-tree :as lt]
             [stem.search :as s]
             [stem.gene-tree :as g-tree]
-            [stem.hybrid :as h])
+            [stem.hybrid :as h]
+            [stem.bootstrap :as b])
   (:import [java.io BufferedReader FileReader File FileWriter]))
 
 
@@ -145,6 +146,69 @@
                        #(newick/tree->newick-str % (str "#" (env :theta)))
                        (:tied-trees results))))))
 
+
+(defn gene-trees->spec-tree
+  [props env gene-trees]
+  (let [l-job (LikJob. props env gene-trees nil)]
+    (get-in (run l-job) [:results :species-tree])))
+
+(defn phylips->spec-tree
+  "Given a sequence of phylips records, return the bootstrapped
+  species tree."
+  [phylips ssa-model theta props env]
+  (let [gene-trees (map #(b/phylip->genetree % ssa-model theta) phylips)]
+    (gene-trees->spec-tree props env gene-trees)))
+
+(defn phylip-groups->spec-trees
+  "Takes groups of b number of k phylips records and returns
+  a sequence of species trees."
+  [groups-of-b-phylips ssa-model {:keys [props env]}]
+  (let [theta (env :theta)]
+    (reduce
+     (fn [spec-trees phylips]
+       (let [spec-tree (phylips->spec-tree phylips ssa-model theta props env)]
+         (cons spec-tree spec-trees)))
+     '()
+     groups-of-b-phylips)))
+
+(defrecord BootstrapJob [props env gene-trees results]
+  JobProtocol
+  (pre-run-check
+   [job]
+   (doseq [k [:theta :lin-set :spec-set]]
+     (u/abort-if-empty (env k) (m/e-strs k)))
+   job)
+
+  (print-job
+   [job]
+   (m/print-bootstrap-job job)
+   job)
+  
+  (run
+   [job]
+   (let [theta (env :theta)
+         b (get props "bootstrap_samples" 10)
+         phylips (map b/file->phylip (.split (props "phylip_files") ",")) 
+         ssa-model (get props "ssa_model" 2)
+         groups-of-b-phylips (map #(repeat b %) phylips)
+         non-sample-gtrees (map
+                            #(b/phylip->genetree % ssa-model theta
+                                                 (flatten (map :dna-seq (:dna-seqs %))))
+                            phylips)
+         original-spec-tree (gene-trees->spec-tree props env non-sample-gtrees)
+         boot-spec-trees (phylip-groups->spec-trees groups-of-b-phylips ssa-model job)]
+     (assoc job :results {:boot-spec-trees boot-spec-trees
+                          :original-spec-tree original-spec-tree})))
+  
+  (print-results
+   [job]
+   (m/print-bootstrap-results results)
+   job)
+ 
+  (print-results-to-file
+   [job]
+   job))
+
 (defrecord SearchJob [props env gene-trees results]
   JobProtocol
   (pre-run-check
@@ -227,24 +291,24 @@
   (let [s (-> (u/parse-settings-file (first file) (m/e-strs :yaml))
               (u/check-settings-map m/e-strs))
         {:keys [properties files species]} s 
-        env (create-env s)
-        gene-trees (g-tree/get-gene-trees files (env :theta))]
+        env (create-env s)]
     (case (properties "run")
           0 (UserTreeJob.
              properties
              (assoc env :user-trees (u/parse-tree-file (get properties
                                                             "user_tree"
                                                             *user-filename-default*)))
-             gene-trees nil)
-          2 (SearchJob. properties env gene-trees nil)
+             (g-tree/get-gene-trees files (env :theta)) nil)
+          2 (SearchJob. properties env (g-tree/get-gene-trees files (env :theta)) nil)
           3 (HybridJob.
              properties
              (assoc env :hybrid-newick (first (u/parse-tree-file
                                                (get properties
                                                     "hybrid_tree"
                                                     *hybrid-filename-default*))))
-             gene-trees nil)
-          (LikJob. properties env gene-trees nil))))
+             (g-tree/get-gene-trees files (env :theta)) nil)
+          4 (BootstrapJob. properties env nil nil)
+          (LikJob. properties env (g-tree/get-gene-trees files (env :theta)) nil))))
 
 (defn run-job
   [file]

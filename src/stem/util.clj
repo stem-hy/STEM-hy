@@ -7,7 +7,7 @@
            [org.yaml.snakeyaml Yaml]
            [java.util Random]))
 
-(def in-production? true)
+(def in-production? false)
 
 (defn abort
   ([message] (abort message nil))
@@ -153,6 +153,23 @@
     (catch FileNotFoundException e
       (abort (str "File " f " not found.")))))
 
+(defn delete-file [f-name]
+  (let [f (File. f-name)]
+    (when (.exists f)
+      (.delete f))))
+
+(defn delete-files [& files]
+  (doseq [f files] (delete-file f)))
+
+(def ssa-for-os
+  (let [os (System/getProperty "os.name")]
+    (cond
+     (.contains os "Linux") "ssa-linux"
+     (.contains os "Mac")   "ssa-osx"
+     (.contains os "Windows") "ssa-windows"
+     (.contains os "Sun") "ssa-sparc"
+     :else "ssa-unix")))
+
 (defn write-to-file [f str]
   (spit f str))
 
@@ -282,6 +299,9 @@
         a-sym         (with-meta (gensym "a") {:tag 'doubles})]
     `(let [~a-sym ~nested-array]
        (aset ~a-sym ~y (double ~v)))))
+
+(defn aset-col! [array y vs]
+  (dotimes [x (alength array)] (aset! array x y (nth vs x))))
 
 (defn get-from-upper-triangular
   "Assumes matrix is upper triangular"
