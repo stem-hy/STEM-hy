@@ -15,13 +15,11 @@
   Instead of returning another matrix in vector-vector form, it just returns
   a lazy seq of the rows concatenated, since all that's left is to write
   to a file."
-  ([m] (sample-dna-matrix m default-seed))
-  ([m seed]
-     (let [nsites (count (first m))
-           rg (u/rand-generator seed)
-           rand-col-idxs (repeatedly nsites #(rg :int nsites))] ; samples cols
-       (for [x (range (count m)) y rand-col-idxs]
-         (get-in m [x y])))))
+  [rand-gen m]
+  (let [nsites (count (first m))
+        rand-col-idxs (repeatedly nsites #(rand-gen :int nsites))] ; samples cols
+    (for [x (range (count m)) y rand-col-idxs]
+      (get-in m [x y]))))
 
 ;; functions for parsing PHYLIP files
 (defn print-matrix [m]
@@ -101,25 +99,33 @@ seedk: 56789")
 (defn clean-up []
   (u/delete-files "settings-ssa" "infile" "besttree" "treefile" "paupfile.nex" "results"))
 
-(defn phylip->genetree
-  ([p model theta]
-     (let [sample (->> (dna-seqs->dna-matrix (:dna-seqs p))
-                       (sample-dna-matrix))]
-       (phylip->genetree p model theta sample)))
-  ([p model theta sample]
-     (let [specs (map :name (:dna-seqs p))]
-       (try
-         (do
-           (write-ssa-infile (:nseqs p) (:nsites p) specs sample)
-           (write-ssa-settings-file model)
-           (run-ssa u/ssa-for-os)
-           (parse-ssa-treefile "treefile" theta))
-         (catch Exception e
-           (clean-up)
-           (u/abort "An error occured generating the bootstrap samples...\n" e))
-         (finally
-          (clean-up))))))
+(defn sample-phylip
+  [p rand-gen]
+  (->> (:dna-seqs p)
+       (dna-seqs->dna-matrix)
+       (sample-dna-matrix rand-gen)))
 
-(defn phylip-file->genetree
-  [f model theta]
-  (phylip->genetree (file->phylip f) model theta))
+(defn run-ssa-workflow
+  [{:keys [nseqs nsites] :as p} model theta dna-seqs]
+  (try
+    (do
+      (write-ssa-infile nseqs nsites (map :name (:dna-seqs p)) dna-seqs)
+      (write-ssa-settings-file model)
+      (run-ssa u/ssa-for-os)
+      (parse-ssa-treefile "treefile" theta))
+    (catch Exception e
+      (clean-up)
+      (u/abort "An error occured generating the bootstrap samples...\n" e))
+    (finally
+     (clean-up))))
+
+(defn phylip->genetree
+  ([p model theta] ;; don't sample - just uses original dna-seqs
+     (run-ssa-workflow p model theta (flatten (map :dna-seq (:dna-seqs p)))))
+  ([p model theta rand-gen]
+     (run-ssa-workflow p model theta (sample-phylip p rand-gen))))
+
+
+(defn phylips->genetrees
+  [phylips ssa-model rand-gen theta]
+  (map #(phylip->genetree % ssa-model theta rand-gen) phylips))
