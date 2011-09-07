@@ -125,11 +125,15 @@
   (print-lik-job job)
   (println "\nBootstrapping trees (this might take a while)...\n"))
 
-(defn print-bootstrap-results
+(defn print-raw-bootstrap-results
   [{:keys [boot-spec-trees original-spec-tree]}]
-  (println "\n\n****************Results*****************\n")
-  (println "\nThe maximum likelihood species tree estimate is:\n")
+  (println "The maximum likelihood species tree estimate is:\n")
   (println original-spec-tree "\n")
   (println "\nThe" (count boot-spec-trees) "bootstrapped species trees:\n")
   (doseq [s boot-spec-trees]
     (println s "\n")))
+
+(defn print-bootstrap-results
+  [job]
+  (println "\n\n****************Results*****************\n\n")
+  (print-raw-bootstrap-results job))

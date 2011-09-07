@@ -146,30 +146,10 @@
                        #(newick/tree->newick-str % (str "#" (env :theta)))
                        (:tied-trees results))))))
 
-
 (defn gene-trees->spec-tree
   [props env gene-trees]
   (let [l-job (LikJob. props env gene-trees nil)]
     (get-in (run l-job) [:results :species-tree])))
-
-(defn phylips->spec-tree
-  "Given a sequence of phylips records, return the bootstrapped
-  species tree."
-  [phylips ssa-model theta props env]
-  (let [gene-trees (map #(b/phylip->genetree % ssa-model theta) phylips)]
-    (gene-trees->spec-tree props env gene-trees)))
-
-(defn phylip-groups->spec-trees
-  "Takes groups of b number of k phylips records and returns
-  a sequence of species trees."
-  [groups-of-b-phylips ssa-model {:keys [props env]}]
-  (let [theta (env :theta)]
-    (reduce
-     (fn [spec-trees phylips]
-       (let [spec-tree (phylips->spec-tree phylips ssa-model theta props env)]
-         (cons spec-tree spec-trees)))
-     '()
-     groups-of-b-phylips)))
 
 (defrecord BootstrapJob [props env gene-trees results]
   JobProtocol
@@ -186,19 +166,23 @@
   
   (run
    [job]
-   (let [theta (env :theta)
+   (let [path-to-ssa (u/setup-ssa-exe u/ssa-for-os)
+         theta (env :theta)
          b (get props "bootstrap_samples" 10)
-         phylips (map b/file->phylip (.split (props "phylip_files") ",")) 
+         phylips (map b/file->phylip (.split (props "phylip_files") ","))
          ssa-model (get props "ssa_model" 2)
-         groups-of-b-phylips (map #(repeat b %) phylips)
-         non-sample-gtrees (map
-                            #(b/phylip->genetree % ssa-model theta
-                                                 (flatten (map :dna-seq (:dna-seqs %))))
-                            phylips)
-         original-spec-tree (gene-trees->spec-tree props env non-sample-gtrees)
-         boot-spec-trees (phylip-groups->spec-trees groups-of-b-phylips ssa-model job)]
-     (assoc job :results {:boot-spec-trees boot-spec-trees
-                          :original-spec-tree original-spec-tree})))
+         groups-of-b-phylips (repeat b phylips)
+         no-samp-gtrees (map #(b/phylip->genetree % ssa-model theta path-to-ssa) phylips)
+         ;; uses doall to force evaluation, since we need to delete
+         ;; the ssa executable after the let form
+         original-spec-tree (doall (gene-trees->spec-tree props env no-samp-gtrees))
+         rand-gen (u/rand-generator (get props "seed"))
+         bstrap-fn #(b/phylips->genetrees phylips ssa-model rand-gen theta path-to-ssa)
+         boot-spec-trees (doall (map #(gene-trees->spec-tree props env %)
+                                     (repeatedly b bstrap-fn)))]
+     (do (u/clean-up-ssa path-to-ssa)
+         (assoc job :results {:boot-spec-trees boot-spec-trees
+                              :original-spec-tree original-spec-tree}))))
   
   (print-results
    [job]
@@ -207,6 +191,8 @@
  
   (print-results-to-file
    [job]
+   (binding [*out* (java.io.FileWriter. (File. "bootstrap.results"))]
+     (m/print-raw-bootstrap-results results))
    job))
 
 (defrecord SearchJob [props env gene-trees results]
