@@ -2,12 +2,13 @@
   (:use [clojure.pprint] [stem.constants])
   (:require [clojure.string :as str]
             [clojure.java.io :as io]
-            [clojure.zip :as z])
-  (:import [java.io File StringReader BufferedReader FileNotFoundException]
+            [clojure.zip :as z]
+            [clojure.java.shell :as shell])
+  (:import [java.io FilePermission File StringReader BufferedReader FileNotFoundException]
            [org.yaml.snakeyaml Yaml]
            [java.util Random]))
 
-(def in-production? false)
+(def in-production? true)
 
 (defn abort
   ([message] (abort message nil))
@@ -161,15 +162,6 @@
 (defn delete-files [& files]
   (doseq [f files] (delete-file f)))
 
-(def ssa-for-os
-  (let [os (System/getProperty "os.name")]
-    (cond
-     (.contains os "Linux") "ssa-linux"
-     (.contains os "Mac")   "ssa-osx"
-     (.contains os "Windows") "ssa-windows"
-     (.contains os "Sun") "ssa-sparc"
-     :else "ssa-unix")))
-
 (defn write-to-file [f str]
   (spit f str))
 
@@ -198,6 +190,41 @@
 (defn indexed-map
   [coll]
   (zipmap coll (range (count coll))))
+
+(def ssa-for-os
+  (let [os (System/getProperty "os.name")]
+    (cond
+     (.contains os "Linux") "ssa-linux"
+     (.contains os "Mac")   "ssa-osx"
+     (.contains os "Windows") "ssa-windows"
+     (.contains os "Sun") "ssa-sparc"
+     :else "ssa-unix")))
+
+(defn create-ssa-temp-dir []
+  (let [tmp-dir (File. (str "ssa" (System/nanoTime) "tmp"))]
+    (do (.mkdir tmp-dir)
+        tmp-dir)))
+
+(defn resource-as-stream
+  [rsc-name]
+  (let [thr (Thread/currentThread)
+        ldr (.getContextClassLoader thr)]
+    (.getResourceAsStream ldr rsc-name)))
+
+(defn setup-ssa-exe
+  "Copies ssa executable from jar file and stores in a temp location
+  to be run later."
+  [path]
+  (let [tmp-file (File/createTempFile "ssa" "")]
+    (with-open [ins (resource-as-stream path)]
+      (do (.deleteOnExit tmp-file)
+          (io/copy ins tmp-file)
+          (shell/sh "chmod" "a+x" (.getAbsolutePath tmp-file))
+          (.getAbsolutePath tmp-file)))))
+
+(defn clean-up-ssa
+  [path-ssa-exe]
+  (-> (File. path-ssa-exe) (.delete)))
 
 ;;;;;;;;;;; functions for parsing yaml settings file ;;;;;;;;;;;;;;;;;;;;;;;
 (defn contains-settings?

@@ -126,7 +126,7 @@
   (println "\nBootstrapping trees (this might take a while)...\n"))
 
 (defn print-raw-bootstrap-results
-  [boot-spec-trees original-spec-tree]
+  [{:keys [boot-spec-trees original-spec-tree]}]
   (println "The maximum likelihood species tree estimate is:\n")
   (println original-spec-tree "\n")
   (println "\nThe" (count boot-spec-trees) "bootstrapped species trees:\n")
@@ -134,6 +134,6 @@
     (println s "\n")))
 
 (defn print-bootstrap-results
-  [{:keys [boot-spec-trees original-spec-tree]}]
+  [job]
   (println "\n\n****************Results*****************\n\n")
-  (print-raw-bootstrap-results boot-spec-trees original-spec-tree))
+  (print-raw-bootstrap-results job))

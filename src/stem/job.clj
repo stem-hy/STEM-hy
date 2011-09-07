@@ -166,18 +166,23 @@
   
   (run
    [job]
-   (let [theta (env :theta)
+   (let [path-to-ssa (u/setup-ssa-exe u/ssa-for-os)
+         theta (env :theta)
          b (get props "bootstrap_samples" 10)
          phylips (map b/file->phylip (.split (props "phylip_files") ","))
          ssa-model (get props "ssa_model" 2)
          groups-of-b-phylips (repeat b phylips)
-         no-samp-gtrees (map #(b/phylip->genetree % ssa-model theta) phylips)
-         original-spec-tree (gene-trees->spec-tree props env no-samp-gtrees)
+         no-samp-gtrees (map #(b/phylip->genetree % ssa-model theta path-to-ssa) phylips)
+         ;; uses doall to force evaluation, since we need to delete
+         ;; the ssa executable after the let form
+         original-spec-tree (doall (gene-trees->spec-tree props env no-samp-gtrees))
          rand-gen (u/rand-generator (get props "seed"))
-         boot-spec-trees (map #(gene-trees->spec-tree props env %)
-              (repeatedly b #(b/phylips->genetrees phylips ssa-model rand-gen theta)))]
-     (assoc job :results {:boot-spec-trees boot-spec-trees
-                          :original-spec-tree original-spec-tree})))
+         bstrap-fn #(b/phylips->genetrees phylips ssa-model rand-gen theta path-to-ssa)
+         boot-spec-trees (doall (map #(gene-trees->spec-tree props env %)
+                                     (repeatedly b bstrap-fn)))]
+     (do (u/clean-up-ssa path-to-ssa)
+         (assoc job :results {:boot-spec-trees boot-spec-trees
+                              :original-spec-tree original-spec-tree}))))
   
   (print-results
    [job]

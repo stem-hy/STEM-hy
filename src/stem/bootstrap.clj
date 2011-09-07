@@ -94,7 +94,7 @@ seedk: 56789")
     (gt/parse-gene-tree-str (str rate newick-str) theta)))
 
 (defn run-ssa [exe]
-  (shell/sh (str "resources/" exe)))
+  (shell/sh (str exe)))
 
 (defn clean-up []
   (u/delete-files "settings-ssa" "infile" "besttree" "treefile" "paupfile.nex" "results"))
@@ -106,12 +106,12 @@ seedk: 56789")
        (sample-dna-matrix rand-gen)))
 
 (defn run-ssa-workflow
-  [{:keys [nseqs nsites] :as p} model theta dna-seqs]
+  [{:keys [nseqs nsites] :as p} model theta dna-seqs path-to-ssa]
   (try
     (do
       (write-ssa-infile nseqs nsites (map :name (:dna-seqs p)) dna-seqs)
       (write-ssa-settings-file model)
-      (run-ssa u/ssa-for-os)
+      (run-ssa path-to-ssa)
       (parse-ssa-treefile "treefile" theta))
     (catch Exception e
       (clean-up)
@@ -120,12 +120,12 @@ seedk: 56789")
      (clean-up))))
 
 (defn phylip->genetree
-  ([p model theta] ;; don't sample - just uses original dna-seqs
-     (run-ssa-workflow p model theta (flatten (map :dna-seq (:dna-seqs p)))))
-  ([p model theta rand-gen]
-     (run-ssa-workflow p model theta (sample-phylip p rand-gen))))
+  ([p model theta path-to-ssa] ;; don't sample - just uses original dna-seqs
+     (run-ssa-workflow p model theta (flatten (map :dna-seq (:dna-seqs p))) path-to-ssa))
+  ([p model theta path-to-ssa rand-gen]
+     (run-ssa-workflow p model theta (sample-phylip p rand-gen) path-to-ssa)))
 
 
 (defn phylips->genetrees
-  [phylips ssa-model rand-gen theta]
-  (map #(phylip->genetree % ssa-model theta rand-gen) phylips))
+  [phylips ssa-model rand-gen theta path-to-ssa]
+  (map #(phylip->genetree % ssa-model theta path-to-ssa rand-gen) phylips))
